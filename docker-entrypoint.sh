@@ -19,17 +19,18 @@ else
     echo "Checking for superuser..."
     python3 /nsupdate/manage.py shell <<EOF
 from django.contrib.auth import get_user_model
+import sys
 User = get_user_model()
 if not User.objects.filter(username='${DJANGO_SUPERUSER_USERNAME}').exists():
     print("Superuser not found, creating one...")
-    if [ -z "${DJANGO_SUPERUSER_PASSWORD}" ]; then
-        echo "Error: DJANGO_SUPERUSER_PASSWORD environment variable is not set." >&2
-        echo "Please set this variable to create the superuser on the first run." >&2
-        exit 1
-    else
-        User.objects.create_superuser('${DJANGO_SUPERUSER_USERNAME}', '${DJANGO_SUPERUSER_EMAIL}', '${DJANGO_SUPERUSER_PASSWORD}')
+    password = '${DJANGO_SUPERUSER_PASSWORD}'
+    if not password:
+        print("Error: DJANGO_SUPERUSER_PASSWORD environment variable is not set.", file=sys.stderr)
+        print("Please set this variable to create the superuser on the first run.", file=sys.stderr)
+        sys.exit(1)
+    else:
+        User.objects.create_superuser('${DJANGO_SUPERUSER_USERNAME}', '${DJANGO_SUPERUSER_EMAIL}', password)
         print("Superuser created.")
-fi
 EOF
 
     # Start the Gunicorn server

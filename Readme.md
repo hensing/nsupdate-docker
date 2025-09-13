@@ -2,11 +2,8 @@
 
 This repository provides a Docker image for [nsupdate.info](https://github.com/nsupdate-info/nsupdate.info), a dynamic DNS service.
 
-<<<<<<< HEAD
-The original project was created by [Thomas Waldmann (@ThomasWaldmann)](https://github.com/ThomasWaldmann). This Docker image is maintained by [Henning Dickten (@hensing)](https://github.com/hensing).
-=======
-The original project was created by Thomas Waldmann (@ThomasWaldmann). This Docker image is maintained by Henning Dickten (@hensing).
->>>>>>> fec07ef4a6f7ba77f2e1df904a4259b46783a4d0
+The original project was created by [Thomas Waldmann (@ThomasWaldmann)](https://github.com/ThomasWaldmann).
+This Docker image is maintained by [Dr. Henning Dickten (@hensing)](https://github.com/hensing).
 
 ## Features
 
@@ -65,11 +62,8 @@ docker run -d \
 
 ### Environment Variables
 
-<<<<<<< HEAD
 The container can be configured using the following environment variables. A template is provided in the `.env.example` file, which you can copy to `.env` and customize.
-=======
-The container can be configured using the following environment variables:
->>>>>>> fec07ef4a6f7ba77f2e1df904a4259b46783a4d0
+
 
 | Variable                      | Description                                                                                                | Default                               |
 | ----------------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------- |
