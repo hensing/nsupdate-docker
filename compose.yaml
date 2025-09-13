@@ -1,0 +1,23 @@
+services:
+  nsupdate:
+    image: ghcr.io/hensing/nsupdate-docker:latest
+    container_name: nsupdate
+    restart: unless-stopped
+    # The port is not published to the host, as it is expected to be accessed
+    # via the 'proxy' network by a reverse proxy (e.g., Traefik, Nginx).
+    volumes:
+      - ./config:/config
+      - ./local_settings.py:/nsupdate/src/local_settings.py
+    env_file:
+      - .env
+    networks:
+      - proxy
+      - mail
+
+networks:
+  # Connects to the reverse proxy network, making the service available to the proxy.
+  proxy:
+    external: true
+  # Connects to a network with a mail server (e.g., Postfix) for sending emails.
+  mail:
+    external: true
