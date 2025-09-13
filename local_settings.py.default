@@ -1,0 +1,102 @@
+"""
+Default settings for the nsupdate.info Docker container.
+Copy this file to `local_settings.py` and customize it.
+"""
+
+import os
+from nsupdate.settings.prod import *
+
+#
+# --- Basic Settings ---
+#
+
+# IMPORTANT: Set this via the SECRET_KEY environment variable for production.
+# A default is provided for convenience, but it is insecure and should not be used.
+# You can generate a new key using: python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())'
+SECRET_KEY = os.environ.get('SECRET_KEY', 'S3CR3T')
+
+# Set to True to enable debugging, but never in a production environment
+DEBUG = False
+
+# Your primary domain name
+BASEDOMAIN = 'dyn.example.com'
+
+# --- Host and Domain Configuration ---
+# Defines the hostnames the service will run on.
+# Ensure your reverse proxy is configured to forward requests for these hosts.
+WWW_HOST = 'www.' + BASEDOMAIN
+WWW_IPV4_HOST = 'ipv4.' + BASEDOMAIN
+WWW_IPV6_HOST = 'ipv6.' + BASEDOMAIN
+ALLOWED_HOSTS = ['localhost', BASEDOMAIN, WWW_HOST, WWW_IPV4_HOST, WWW_IPV6_HOST]
+
+#
+# --- Database Configuration ---
+# The default configuration uses SQLite within the persistent /config volume.
+#
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3', # Add 'postgresql_psycopg2', 'mysql', 'sqlite3' or 'oracle'.
+        'NAME': '/config/nsupdate.sqlite',      # Or path to database file if using sqlite3.
+        
+        # The following settings are not used with sqlite3:
+        #'USER': '',
+        #'PASSWORD': '',
+        #'HOST': '',             # Empty for localhost through domain sockets or '127.0.0.1' for localhost through TCP.
+        #'PORT': ''              # Set to empty string for default.
+    }
+}
+
+#
+# --- Email Configuration ---
+#
+# Service contact email displayed on the "about" page
+SERVICE_CONTACT = 'hostmaster@example.com'
+
+# Default sender address for automated emails (e.g., user activation)
+DEFAULT_FROM_EMAIL = "nsupdate@example.com"
+
+# SMTP server settings for sending emails
+# EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+# EMAIL_HOST = 'smtp.example.com'
+# EMAIL_PORT = 587
+# EMAIL_HOST_USER = 'nsupdate@example.com'
+# EMAIL_HOST_PASSWORD = 'your-smtp-password'
+# EMAIL_USE_TLS = True
+
+#
+# --- Admin and Management ---
+#
+# Admins will receive traceback emails on server errors
+ADMINS = (
+    ('Your Name', 'your-email@example.com'),
+)
+MANAGERS = ADMINS
+
+# Set to False to disable new user registrations
+REGISTRATION_OPEN = True
+
+#
+# --- Social Authentication (Optional) ---
+# Uncomment the backends you want to enable and provide the corresponding keys.
+#
+# AUTHENTICATION_BACKENDS = (
+#     'social_core.backends.github.GithubOAuth2',
+#     'social_core.backends.google.GoogleOAuth2',
+#     'django.contrib.auth.backends.ModelBackend',
+# )
+#
+# SOCIAL_AUTH_GITHUB_KEY = ''
+# SOCIAL_AUTH_GITHUB_SECRET = ''
+# SOCIAL_AUTH_GITHUB_WHITELISTED_DOMAINS = ['your-domain.com']
+#
+# SOCIAL_AUTH_GOOGLE_OAUTH2_KEY = ''
+# SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET = ''
+# SOCIAL_AUTH_GOOGLE_OAUTH2_WHITELISTED_DOMAINS = ['your-domain.com']
+
+#
+# --- Middleware and Static Files ---
+#
+MIDDLEWARE += ('xff.middleware.XForwardedForMiddleware', 'whitenoise.middleware.WhiteNoiseMiddleware',)
+STATIC_ROOT = '/nsupdate/static'
+XFF_TRUSTED_PROXY_DEPTH = 1
+TIME_ZONE = 'Europe/Berlin'
