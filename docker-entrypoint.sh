@@ -1,23 +1,18 @@
 #!/bin/bash
 set -e
 
-# Always apply database migrations
-echo "Applying database migrations..."
-python3 /nsupdate/manage.py migrate
+# --- Root Initialization Phase ---
+# This block runs only if the container is started as root.
+if [ "$(id -u)" = '0' ]; then
+    echo "Running as root, performing initial setup..."
 
-# If a command is passed to the container, execute it.
-# Otherwise, start the web server.
-if [ -n "$1" ]; then
-    echo "Executing command: $@"
-    exec "$@"
-else
-    # Start the cron daemon in the background
-    echo "Starting cron daemon..."
-    cron
+    # 1. Apply database migrations.
+    echo "Applying database migrations..."
+    django-admin migrate
 
-    # Create a superuser on the first run, if it doesn't exist
+    # 2. Create a superuser on the first run if it doesn't exist.
     echo "Checking for superuser..."
-    python3 /nsupdate/manage.py shell <<EOF
+    django-admin shell <<EOF
 from django.contrib.auth import get_user_model
 import sys
 User = get_user_model()
@@ -25,16 +20,28 @@ if not User.objects.filter(username='${DJANGO_SUPERUSER_USERNAME}').exists():
     print("Superuser not found, creating one...")
     password = '${DJANGO_SUPERUSER_PASSWORD}'
     if not password:
-        print("Error: DJANGO_SUPERUSER_PASSWORD environment variable is not set.", file=sys.stderr)
-        print("Please set this variable to create the superuser on the first run.", file=sys.stderr)
+        print("Error: DJANGO_SUPERUSER_PASSWORD is not set.", file=sys.stderr)
         sys.exit(1)
     else:
         User.objects.create_superuser('${DJANGO_SUPERUSER_USERNAME}', '${DJANGO_SUPERUSER_EMAIL}', password)
         print("Superuser created.")
 EOF
 
-    # Start the Gunicorn server
-    echo "Starting Gunicorn server..."
-    cd /nsupdate/src
-    exec gunicorn --workers=4 --log-level=info --forwarded-allow-ips='*' --bind 0.0.0.0:8000 nsupdate.wsgi
+    # 3. Ensure correct permissions for the application directory.
+    echo "Ensuring correct ownership..."
+    chown -R www-data:www-data /app
+
+    # 4. Start cron daemon as root.
+    echo "Starting cron daemon..."
+    cron -f &
+
+    # 5. Drop privileges and execute the main command (CMD) as www-data.
+    echo "Dropping privileges to www-data and starting application..."
+    cd /app/src
+    exec gosu www-data "$@"
+
+# --- Non-Root Execution ---
+# If the container is not started as root, just execute the command.
+else
+    exec "$@"
 fi

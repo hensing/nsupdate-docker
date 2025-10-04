@@ -1,13 +1,17 @@
 services:
   nsupdate:
     image: ghcr.io/hensing/nsupdate-docker:latest
+    build:
+      context: .
+      args:
+        - BUILD_TARGET=prod
     container_name: nsupdate
     restart: unless-stopped
     # The port is not published to the host, as it is expected to be accessed
     # via the 'proxy' network by a reverse proxy (e.g., Traefik, Nginx).
     volumes:
-      - ./config:/config
-      - ./local_settings.py:/nsupdate/src/local_settings.py
+      - ./database:/app/database
+      - ./local_settings.py:/app/src/local_settings.py
     env_file:
       - .env
     networks:
