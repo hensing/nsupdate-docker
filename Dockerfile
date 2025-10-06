@@ -12,8 +12,9 @@ FROM python:3.13-slim-trixie AS builder
 
 ARG BUILD_TARGET
 
-# Install build dependencies
+# Update base image and install build dependencies
 RUN apt-get update \
+    && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends \
        git \
        build-essential \
@@ -26,13 +27,18 @@ RUN git clone https://github.com/nsupdate-info/nsupdate.info.git /app
 
 # Install Python dependencies
 WORKDIR /app
-RUN pip install --no-cache-dir -r requirements.d/prod.txt \
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install \
+    -r requirements.d/prod.txt \
+    django-xff \
+    whitenoise \
     && if [ "$BUILD_TARGET" = "test" ] ; then \
         echo ">>> Installing additional development requirements..." && \
-        pip install --no-cache-dir -r requirements.d/dev.txt; \
-    fi \
-    && pip install --no-cache-dir django-xff whitenoise \
-    && pip install --no-cache-dir -e . \
+        pip install -r requirements.d/dev.txt; \
+    fi
+
+# Install the application itself in editable mode and prepare migrations
+RUN pip install -e . \
     && PYTHONPATH=/app/src DJANGO_SETTINGS_MODULE=nsupdate.settings.prod django-admin makemigrations main \
     && rm -rf /app/.git
 
@@ -60,6 +66,7 @@ ENV BUILD=prod \
     
 # Install runtime dependencies
 RUN apt-get update \
+    && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends \
        cron \
        gosu \
@@ -69,10 +76,12 @@ RUN apt-get update \
 RUN groupmod -o -g ${APP_GID} www-data && \
     usermod -o -u ${APP_UID} -g www-data www-data
 
-# Copy application code and installed packages from the builder stage
-COPY --from=builder /app /app
+# Copy installed packages and binaries from the builder stage first
 COPY --from=builder /usr/local/lib/python3.13/site-packages/ /usr/local/lib/python3.13/site-packages/
 COPY --from=builder /usr/local/bin/ /usr/local/bin/
+
+# Copy the application code last to ensure correct layering
+COPY --from=builder /app /app
 
 # Copy configuration and entrypoint scripts
 COPY local_settings.py.default /app/src/local_settings.py

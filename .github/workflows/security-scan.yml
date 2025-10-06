@@ -1,0 +1,46 @@
+name: Weekly Security Scan
+
+on:
+  schedule:
+    - cron: '0 3 * * 0' # Runs every Sunday at 3 AM UTC
+  workflow_dispatch: # Allows manual triggering
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # for actions/checkout
+      packages: read # for docker/login-action
+      security-events: write # for github/codeql-action/upload-sarif
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ghcr.io/${{ github.repository }}:latest
+          format: spdx-json
+          output-file: "${{ github.event.repository.name }}-sbom.spdx.json"
+
+      - name: Scan SBOM
+        uses: anchore/scan-action@v6
+        with:
+          sbom: "${{ github.event.repository.name }}-sbom.spdx.json"
+          fail-build: true
+          severity-cutoff: critical
+          output-format: "sarif"
+          output-file: "grype-results.sarif"
+
+      - name: Upload vulnerability report
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'grype-results.sarif'

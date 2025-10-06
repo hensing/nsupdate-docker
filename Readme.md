@@ -98,11 +98,24 @@ The container uses a volume mounted at `/app/database` to store the SQLite datab
 
 The image includes a cron service that automatically runs essential Django management commands. The jobs are defined in `nsupdate-cron` and run as the `www-data` user.
 
-## Security
+## Security Details
 
 -   **Multi-Stage Build**: The final image contains only the necessary runtime dependencies, minimizing the attack surface.
 -   **Non-Root User**: The main application process runs as the unprivileged `www-data` user (UID/GID 33).
 -   **Privilege Separation**: The entrypoint script performs initial setup (like database migrations) as `root` before dropping privileges to `www-data` to start the application.
+
+## Vulnerability Scanning
+
+[![Known Vulnerabilities](https://snyk.io/test/github/hensing/nsupdate-docker/badge.svg)](https://snyk.io/test/github/hensing/nsupdate-docker)
+
+This project is continuously monitored for security vulnerabilities.
+
+-   **CI/CD Scans**: Every push to the `main` branch is automatically scanned for new vulnerabilities. The build will fail if any `critical` severity vulnerabilities are found.
+-   **Weekly Scans**: The `latest` Docker image is scanned weekly to detect newly disclosed vulnerabilities in existing dependencies. Results are available in the [Security tab](https://github.com/hensing/nsupdate-docker/security/code-scanning).
+
+### Vulnerability Disclosure
+
+If you discover a security vulnerability, please report it privately. Do not create a public GitHub issue. Contact information can be found in the `SECURITY.md` file.
 
 ## Building for Development and Testing
 

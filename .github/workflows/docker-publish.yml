@@ -25,12 +25,13 @@ jobs:
           -e DJANGO_SUPERUSER_PASSWORD=ci-test-password
           nsupdate-test pytest --ignore=src/nsupdate/api/_tests/test_api.py --ignore=src/nsupdate/main/_tests/test_dnstools.py
 
-  build-and-push:
+  build-scan-push:
     needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+      security-events: write # for github/codeql-action/upload-sarif
 
     steps:
       - name: Checkout repository
@@ -55,28 +56,35 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
-      - name: Build and push Docker image
+      - name: Build Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
-          push: true
+          push: false
+          load: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-  sbom:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      contents: write
-      
-    steps:
-      - name: Run Syft to generate SBOM
+      - name: Create SBOM
         uses: anchore/sbom-action@v0
         with:
           image: ghcr.io/${{ github.repository }}:latest
+          format: spdx-json
+          output-file: "${{ github.event.repository.name }}-sbom.spdx.json"
 
-      - name: Upload SBOM as artifact
-        uses: anchore/sbom-action/publish-sbom@v0
+      - name: Scan SBOM
+        uses: anchore/scan-action@v6
         with:
-          sbom-artifact-match: ".*\\.spdx$"
+          sbom: "${{ github.event.repository.name }}-sbom.spdx.json"
+          fail-build: true
+          severity-cutoff: critical
+          output-format: "sarif"
+          output-file: "grype-results.sarif"
+
+      - name: Upload vulnerability report
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'grype-results.sarif'
+
+      - name: Push Docker image
+        run: docker push --all-tags ghcr.io/${{ github.repository }}
