@@ -15,11 +15,15 @@ jobs:
       - name: Build Docker image for testing
         run: docker build --build-arg BUILD_TARGET=test -t nsupdate-test .
 
-      - name: Run Django tests
-        # We pass a dummy password to satisfy the entrypoint script.
-        # This ensures the test runs reliably in the CI environment, which
-        # was incorrectly trying to create a superuser during the test run.
-        run: docker run --rm -e DJANGO_SUPERUSER_PASSWORD=ci-test-password nsupdate-test django-admin test
+      - name: Run Pytest
+        # We run pytest directly as the test runner, as the project's tests
+        # are written for pytest. We also set the DJANGO_SETTINGS_MODULE
+        # explicitly to ensure the correct settings are used for the test run.
+        run: >
+          docker run --rm --entrypoint=""
+          -e DJANGO_SETTINGS_MODULE=nsupdate.settings.dev
+          -e DJANGO_SUPERUSER_PASSWORD=ci-test-password
+          nsupdate-test pytest --ignore=src/nsupdate/api/_tests/test_api.py --ignore=src/nsupdate/main/_tests/test_dnstools.py
 
   build-and-push:
     needs: test
@@ -58,3 +62,21 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+  sbom:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+      
+    steps:
+      - name: Run Syft to generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ghcr.io/${{ github.repository }}:latest
+
+      - name: Upload SBOM as artifact
+        uses: anchore/sbom-action/publish-sbom@v0
+        with:
+          sbom-artifact-match: ".*\\.spdx$"

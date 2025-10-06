@@ -10,6 +10,8 @@
 ARG BUILD_TARGET=prod
 FROM python:3.13-slim-trixie AS builder
 
+ARG BUILD_TARGET
+
 # Install build dependencies
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -25,8 +27,11 @@ RUN git clone https://github.com/nsupdate-info/nsupdate.info.git /app
 # Install Python dependencies
 WORKDIR /app
 RUN pip install --no-cache-dir -r requirements.d/prod.txt \
+    && if [ "$BUILD_TARGET" = "test" ] ; then \
+        echo ">>> Installing additional development requirements..." && \
+        pip install --no-cache-dir -r requirements.d/dev.txt; \
+    fi \
     && pip install --no-cache-dir django-xff whitenoise \
-    && if [ "$BUILD_TARGET" = "test" ] ; then pip install --no-cache-dir -r requirements.d/dev.txt ; fi \
     && pip install --no-cache-dir -e . \
     && PYTHONPATH=/app/src DJANGO_SETTINGS_MODULE=nsupdate.settings.prod django-admin makemigrations main \
     && rm -rf /app/.git
@@ -52,7 +57,7 @@ ENV BUILD=prod \
     PYTHONPATH="/app/src" \
     STATIC_ROOT="/app/static" \
     GUNICORN_FORWARDED_ALLOW_IPS="*"
-
+    
 # Install runtime dependencies
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
