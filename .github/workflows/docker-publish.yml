@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch: # Allows manual triggering
+  schedule:
+    - cron: '0 4 * * 0' # rebuild every sunday night
 
 jobs:
   test:
