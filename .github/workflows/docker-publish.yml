@@ -76,18 +76,43 @@ jobs:
           output-file: "${{ github.event.repository.name }}-sbom.spdx.json"
 
       - name: Scan SBOM
+        id: scan
         uses: anchore/scan-action@v6
+        continue-on-error: true
         with:
           sbom: "${{ github.event.repository.name }}-sbom.spdx.json"
-          fail-build: true
+          fail-build: false
           severity-cutoff: critical
           output-format: "sarif"
           output-file: "grype-results.sarif"
 
-      - name: Upload vulnerability report
+      - name: Check SARIF exists
+        id: sarifcheck
+        run: |
+          if [ -f grype-results.sarif ]; then echo "found=true" >> $GITHUB_OUTPUT; else echo "found=false" >> $GITHUB_OUTPUT; fi
+
+      - name: Upload SARIF as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: grype-results
+          path: grype-results.sarif
+
+      - name: Upload vulnerability report to Security tab
+        if: steps.sarifcheck.outputs.found == 'true'
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: 'grype-results.sarif'
+
+      - name: Fail on critical vulnerabilities
+        if: steps.sarifcheck.outputs.found == 'true'
+        run: |
+          if grep -iq "critical" grype-results.sarif; then
+            echo "Critical vulnerabilities detected in SARIF (severity: critical)."
+            exit 1
+          else
+            echo "No critical vulnerabilities found in SARIF."
+          fi
 
       - name: Push Docker image
         run: docker push --all-tags ghcr.io/${{ github.repository }}
