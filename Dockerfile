@@ -16,7 +16,11 @@ RUN apt-get update \
     && apt-get dist-upgrade -y \
     && apt-get autoremove -y \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    # If Go is present in the base image, remove Debian golang packages
+    # and common local installs to avoid shipping vulnerable stdlib.
+    && apt-get purge -y golang-go golang-1.* golang || true \
+    && rm -rf /usr/local/go /usr/lib/go /usr/lib/golang || true
 
 # --- Builder Stage ---
 # This stage installs build dependencies, clones the repo, and installs Python packages.
@@ -80,7 +84,6 @@ RUN apt-get update \
     && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends \
        cron \
-       gosu \
     && rm -rf /var/lib/apt/lists/*
 
 # Modify existing www-data user and group to match given UID/GID

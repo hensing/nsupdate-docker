@@ -67,6 +67,7 @@ jobs:
           load: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          pull: true
 
       - name: Create SBOM
         uses: anchore/sbom-action@v0
@@ -107,8 +108,13 @@ jobs:
       - name: Fail on critical vulnerabilities
         if: steps.sarifcheck.outputs.found == 'true'
         run: |
-          if grep -iq "critical" grype-results.sarif; then
-            echo "Critical vulnerabilities detected in SARIF (severity: critical)."
+          # Anchore's SARIF output includes all vulnerabilities, regardless of the severity-cutoff.
+          # We check if there are any results with the explicit tag "Critical" or "critical" in the grype rule's properties.
+          # The SARIF rule maps 'error' to High and Critical, but the actual severity is stored in properties.
+          CRITICAL_COUNT=$(jq -r '.runs[0].tool.driver.rules[] | select(.properties.security-severity | tonumber >= 9.0) | .id' grype-results.sarif | sort | uniq > critical_rules.txt && jq -r '.runs[0].results[].ruleId' grype-results.sarif | grep -f critical_rules.txt | wc -l || echo 0)
+          
+          if [ "$CRITICAL_COUNT" -gt 0 ]; then
+            echo "$CRITICAL_COUNT critical vulnerabilities detected in SARIF."
             exit 1
           else
             echo "No critical vulnerabilities found in SARIF."

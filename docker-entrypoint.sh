@@ -38,7 +38,7 @@ EOF
     # 5. Drop privileges and execute the main command (CMD) as www-data.
     echo "Dropping privileges to www-data and starting application..."
     cd /app/src
-    exec gosu www-data "$@"
+    exec setpriv --reuid=www-data --regid=www-data --init-groups -- "$@"
 
 # --- Non-Root Execution ---
 # If the container is not started as root, just execute the command.
