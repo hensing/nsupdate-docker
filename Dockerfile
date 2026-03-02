@@ -5,22 +5,33 @@
 # Docker image maintained by Henning Dickten (@hensing)
 #
 
+# --- Base Stage ---
+# A minimal, up-to-date base image stage. We perform a full
+# dist-upgrade here so builder/runtime stages start from patched OS.
+ARG BUILD_TARGET=prod
+FROM python:3.13-slim-trixie AS base
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && apt-get dist-upgrade -y \
+    && apt-get autoremove -y \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 # --- Builder Stage ---
 # This stage installs build dependencies, clones the repo, and installs Python packages.
-ARG BUILD_TARGET=prod
-FROM python:3.13-slim-trixie AS builder
+FROM base AS builder
 
 ARG BUILD_TARGET
 
-# Update base image and install build dependencies
+# Install build dependencies (base already upgraded)
 RUN apt-get update \
-    && apt-get upgrade -y \
-    && apt-get install -y --no-install-recommends \
-       git \
-       build-essential \
-       python3-dev \
-       libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
+     && apt-get install -y --no-install-recommends \
+         git \
+         build-essential \
+         python3-dev \
+         libpq-dev \
+     && rm -rf /var/lib/apt/lists/*
 
 # Clone the application repository
 RUN git clone https://github.com/nsupdate-info/nsupdate.info.git /app
@@ -43,8 +54,8 @@ RUN pip install -e . \
     && rm -rf /app/.git
 
 # --- Final Stage ---
-# This stage builds the final, minimal production image.
-FROM python:3.13-slim-trixie
+# This stage builds the final, minimal production image based on `base`.
+FROM base
 
 LABEL maintainer="Henning Dickten (@hensing)"
 
