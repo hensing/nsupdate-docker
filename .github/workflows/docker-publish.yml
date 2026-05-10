@@ -8,9 +8,12 @@ on:
   schedule:
     - cron: '0 4 * * 0' # rebuild every sunday night
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -18,12 +21,110 @@ jobs:
       - name: Build Docker image for testing
         run: docker build --build-arg BUILD_TARGET=test -t nsupdate-test .
 
+      - name: Install and configure BIND for DoH/DoT
+        run: |
+          sudo apt-get -y update
+          sudo apt-get -y install bind9 bind9-dnsutils openssl
+
+          sudo openssl req -x509 -nodes -days 30 -newkey rsa:2048 \
+            -keyout /etc/bind/nsupdate.info.key \
+            -out /etc/bind/nsupdate.info.crt \
+            -subj "/CN=localhost"
+          sudo chown bind:bind /etc/bind/nsupdate.info.key /etc/bind/nsupdate.info.crt
+          sudo chmod 600 /etc/bind/nsupdate.info.key
+
+          sudo tee /etc/bind/named.conf.options > /dev/null << 'NAMED_OPTIONS'
+          tls local-tls {
+            cert-file "/etc/bind/nsupdate.info.crt";
+            key-file "/etc/bind/nsupdate.info.key";
+          };
+          http local-http {
+            endpoints { "/dns-query"; };
+          };
+          options {
+            directory "/var/cache/bind";
+            listen-on port 53  { any; };
+            listen-on port 853 tls local-tls { any; };
+            listen-on port 443 tls local-tls http local-http { any; };
+            forwarders { 8.8.8.8; };
+            dnssec-validation auto;
+          };
+          NAMED_OPTIONS
+
+          sudo tee /etc/bind/named.conf.local > /dev/null << 'NAMED_LOCAL'
+          key "nsupdate.info." {
+            algorithm hmac-sha512;
+            secret "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYQ==";
+          };
+          key "tests.nsupdate.info." {
+            algorithm hmac-sha512;
+            secret "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYQ==";
+          };
+          zone "nsupdate.info" {
+            type master;
+            file "/var/lib/bind/nsupdate.info";
+            update-policy {
+              deny  nsupdate.info. name      nsupdate.info;
+              deny  nsupdate.info. name  www.nsupdate.info;
+              deny  nsupdate.info. name ipv4.nsupdate.info;
+              deny  nsupdate.info. name ipv6.nsupdate.info;
+              grant nsupdate.info. name connectivity-test.nsupdate.info A;
+              grant nsupdate.info. subdomain nsupdate.info;
+            };
+          };
+          zone "tests.nsupdate.info" {
+            type master;
+            file "/var/lib/bind/tests.nsupdate.info";
+            update-policy {
+              deny  tests.nsupdate.info. name      tests.nsupdate.info;
+              deny  tests.nsupdate.info. name  www.tests.nsupdate.info;
+              deny  tests.nsupdate.info. name ipv4.tests.nsupdate.info;
+              deny  tests.nsupdate.info. name ipv6.tests.nsupdate.info;
+              grant tests.nsupdate.info. subdomain tests.nsupdate.info;
+            };
+          };
+          NAMED_LOCAL
+
+          sudo tee /var/lib/bind/nsupdate.info > /dev/null << 'ZONE1'
+          $ORIGIN .
+          $TTL 3600
+          nsupdate.info IN SOA ns1.nsupdate.info. root.nsupdate.info. (
+            2016081401 7200 1800 604800 60 )
+            NS 127.0.0.1.
+            A  127.0.0.1
+          $ORIGIN nsupdate.info.
+          ipv4 A    1.2.3.4
+          ipv6 AAAA ::1
+          www  A    1.2.3.4
+          ZONE1
+
+          sudo tee /var/lib/bind/tests.nsupdate.info > /dev/null << 'ZONE2'
+          $ORIGIN .
+          $TTL 3600
+          tests.nsupdate.info IN SOA ns1.tests.nsupdate.info. root.tests.nsupdate.info. (
+            2016081401 7200 1800 604800 60 )
+            NS 127.0.0.1.
+            A  127.0.0.1
+          $ORIGIN tests.nsupdate.info.
+          ipv4 A    1.2.3.4
+          ipv6 AAAA ::1
+          www  A    1.2.3.4
+          ZONE2
+
+          sudo chown bind:bind /var/lib/bind/nsupdate.info /var/lib/bind/tests.nsupdate.info
+          sudo named-checkconf
+          sudo service bind9 restart
+          sleep 2
+          dig @127.0.0.1 tests.nsupdate.info SOA
+
       - name: Run Pytest
         # We run pytest directly as the test runner, as the project's tests
         # are written for pytest. We also set the DJANGO_SETTINGS_MODULE
         # explicitly to ensure the correct settings are used for the test run.
+        # --network host lets the container reach BIND on 127.0.0.1 (DoH/DoT tests).
         run: >
           docker run --rm --entrypoint=""
+          --network host
           -e DJANGO_SETTINGS_MODULE=nsupdate.settings.dev
           -e DJANGO_SUPERUSER_PASSWORD=ci-test-password
           nsupdate-test pytest --ignore=src/nsupdate/api/_tests/test_api.py --ignore=src/nsupdate/main/_tests/test_dnstools.py

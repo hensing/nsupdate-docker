@@ -9,7 +9,7 @@
 # A minimal, up-to-date base image stage. We perform a full
 # dist-upgrade here so builder/runtime stages start from patched OS.
 ARG BUILD_TARGET=prod
-FROM python:3.13-slim-trixie AS base
+FROM python:3.14-slim-trixie AS base
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
     && apt-get upgrade -y \
@@ -91,7 +91,7 @@ RUN groupmod -o -g ${APP_GID} www-data && \
     usermod -o -u ${APP_UID} -g www-data www-data
 
 # Copy installed packages and binaries from the builder stage first
-COPY --from=builder /usr/local/lib/python3.13/site-packages/ /usr/local/lib/python3.13/site-packages/
+COPY --from=builder /usr/local/lib/python3.14/site-packages/ /usr/local/lib/python3.14/site-packages/
 COPY --from=builder /usr/local/bin/ /usr/local/bin/
 
 # Copy the application code last to ensure correct layering
