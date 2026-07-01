@@ -10,10 +10,10 @@ from nsupdate.settings.prod import *
 # --- Basic Settings ---
 #
 
-# IMPORTANT: Set this via the SECRET_KEY environment variable for production.
-# A default is provided for convenience, but it is insecure and should not be used.
-# You can generate a new key using: python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())'
-SECRET_KEY = os.environ.get('SECRET_KEY', 'S3CR3T')
+# REQUIRED: the SECRET_KEY must be provided via the environment. There is no
+# insecure fallback -- the app will refuse to start if it is unset.
+# Generate one with: python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())'
+SECRET_KEY = os.environ['SECRET_KEY']
 
 # Set to True to enable debugging, but never in a production environment
 DEBUG = False
@@ -100,3 +100,15 @@ MIDDLEWARE += ('xff.middleware.XForwardedForMiddleware', 'whitenoise.middleware.
 STATIC_ROOT = '/app/static'
 XFF_TRUSTED_PROXY_DEPTH = 1
 TIME_ZONE = 'Europe/Berlin'
+
+#
+# --- Security (TLS terminates at the reverse proxy) ---
+# Tell Django it is served over HTTPS via the proxy, and only send cookies over
+# secure connections. Enable HSTS once you are sure everything is on HTTPS.
+#
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+# SECURE_HSTS_SECONDS = 31536000
+# SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+# SECURE_HSTS_PRELOAD = True

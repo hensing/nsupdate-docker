@@ -1,0 +1,27 @@
+# supercronic crontab for nsupdate.info
+# NOTE: supercronic uses the standard 5-field format WITHOUT a per-line user
+# column (jobs run as the invoking non-root user).
+
+# Environment variables for Django
+SHELL=/bin/bash
+PATH=/app/.venv/bin:/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+DJANGO_SETTINGS_MODULE=local_settings
+PYTHONPATH=/app/src
+
+# run cleanoldsessions command every day at 3:30 AM
+30 3 * * * cd /app && django-admin cleanoldsessions
+
+# reinitialize the test user:
+50 2 * * * cd /app && django-admin testuser
+
+# reset the fault counters:
+55 2 * * 6 cd /app && django-admin faults --flag-abuse=150 --reset-client --notify-user
+
+# clear expired sessions from the database, use your correct settings module:
+0  3 * * * cd /app && django-admin clearsessions
+
+# clear outdated registrations:
+30 3 * * * cd /app && django-admin cleanupregistration
+
+# check whether the domain nameservers are reachable / answer queries:
+0  4 * * * cd /app && django-admin domains --check --notify-user
