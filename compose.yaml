@@ -9,9 +9,27 @@ services:
     restart: unless-stopped
     # The port is not published to the host, as it is expected to be accessed
     # via the 'proxy' network by a reverse proxy (e.g., Traefik, Nginx).
+
+    # --- Hardening ---
+    # The image already runs as the non-root user 65532 (see USER in Dockerfile).
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    pids_limit: 200
+    # Small-installation defaults (1-2 concurrent users). Tune as needed.
+    mem_limit: 384m
+    # gunicorn binds high port 8000, so no extra capability is needed as non-root.
+    # To bind a privileged port (<1024) without root you would add ONE of:
+    #   cap_add: ["NET_BIND_SERVICE"]
+    #   sysctls: ["net.ipv4.ip_unprivileged_port_start=80"]
+
     volumes:
       - ./database:/app/database
-      - ./local_settings.py:/app/src/local_settings.py
+      - ./local_settings.py:/app/src/local_settings.py:ro
     env_file:
       - .env
     networks:
