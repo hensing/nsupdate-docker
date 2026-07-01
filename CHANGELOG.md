@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### CI
+
+- Bumped GitHub Actions pins to their latest majors (`actions/checkout@v7`,
+  `actions/upload-artifact@v7`, `docker/login-action@v4`,
+  `docker/metadata-action@v6`, `docker/build-push-action@v7`,
+  `anchore/scan-action@v7`, `github/codeql-action/upload-sarif@v4`). All of
+  these now run natively on Node 24, so the `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24`
+  workaround is no longer needed and has been removed.
+
 ## 2026.07.01
 
 ### Security
