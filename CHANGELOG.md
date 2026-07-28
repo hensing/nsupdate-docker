@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Performance
+
+- **Lowered the default gunicorn worker count from 2 to 1** (dropping
+  `--preload`, which only benefits multi-worker copy-on-write sharing), and
+  tightened `compose.yaml`'s `mem_limit` from `384m` to `256m` accordingly.
+  Real-world `docker stats` measurements at the target scale (max 2
+  simultaneous users) showed a second worker process wasn't earning its RAM;
+  a single sync worker serializes requests, which is imperceptible at this
+  scale. Override the command with `--workers=2 --preload` if you need more
+  concurrency headroom.
+
 ### CI
 
 - Bumped GitHub Actions pins to their latest majors (`actions/checkout@v7`,

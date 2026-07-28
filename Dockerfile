@@ -143,7 +143,9 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 
-# RAM-conscious defaults for small installations (1-2 concurrent users):
-# --preload shares memory across workers (copy-on-write), --max-requests recycles
-# workers to bound memory growth. Lowest-RAM alternative: --workers=1 --threads=4.
-CMD ["/bin/sh", "-c", "exec gunicorn --workers=2 --preload --max-requests=1000 --max-requests-jitter=100 --worker-tmp-dir /dev/shm --log-level=info --forwarded-allow-ips=\"$GUNICORN_FORWARDED_ALLOW_IPS\" --bind 0.0.0.0:8000 nsupdate.wsgi"]
+# RAM-conscious default for small installations (1-2 concurrent users): a
+# single sync worker is the lowest-RAM option -- requests serialize instead of
+# running in parallel, which is imperceptible at this scale. --max-requests
+# recycles the worker periodically to bound memory growth. For more headroom
+# (more concurrent users), override the command with e.g. --workers=2 --preload.
+CMD ["/bin/sh", "-c", "exec gunicorn --workers=1 --max-requests=1000 --max-requests-jitter=100 --worker-tmp-dir /dev/shm --log-level=info --forwarded-allow-ips=\"$GUNICORN_FORWARDED_ALLOW_IPS\" --bind 0.0.0.0:8000 nsupdate.wsgi"]

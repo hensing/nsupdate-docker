@@ -146,9 +146,9 @@ The image runs [`supercronic`](https://github.com/aptible/supercronic) — a con
 
 This image is tuned for small, self-hosted setups (roughly 1–2 concurrent users):
 
--   **Workers**: The default is `--workers=2 --preload` — plenty for a handful of users, with copy-on-write memory sharing. For the lowest possible RAM footprint, override the command to `--workers=1 --threads=4`.
+-   **Workers**: The default is a single `--workers=1` gunicorn worker — the lowest-RAM option; requests serialize instead of running in parallel, which is imperceptible at 1-2 concurrent users. If you need more concurrency headroom, override the command with `--workers=2 --preload` (copy-on-write memory sharing between workers).
 -   **Database**: The default **SQLite** is entirely sufficient. You only need `DATABASE_URL` (PostgreSQL) for larger, high-concurrency deployments.
--   **Memory**: The provided `compose.yaml` sets `mem_limit: 384m` and `pids_limit: 200` as safe, lean defaults. You can try `256m` if you want it tighter.
+-   **Memory**: The provided `compose.yaml` sets `mem_limit: 256m` and `pids_limit: 200` as safe, lean defaults. Tune tighter or looser based on your own `docker stats` observations.
 -   **Security first**: The hardening in `compose.yaml` (see [Security Details](#security-details)) is already suitable for small setups — no tuning required.
 -   **Upkeep**: The Wolfi base has near-zero CVEs and is rebuilt weekly, so you stay patched with minimal effort.
 
