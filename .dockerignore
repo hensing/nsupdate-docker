@@ -1,0 +1,9 @@
+# Allowlist: only the files the Dockerfile actually COPYs are sent to the
+# builder. Everything else -- in particular .env, local_settings.py and the
+# database/ directory, which hold secrets -- never enters the build context.
+*
+!docker-entrypoint.sh
+!nsupdate-crontab
+!local_settings.py.default
+!requirements/pyproject.toml
+!requirements/uv.lock

@@ -2,6 +2,55 @@
 
 ## Unreleased
 
+### Images
+
+- **Two image variants are now published.** `stable` is built from the latest
+  nsupdate release on PyPI and is also tagged with that release version (e.g.
+  `0.13.0`); `dev` is built from upstream GitHub `master`, as the only image
+  was before, and is also tagged `dev-<upstream short sha>`.
+- **`latest` is unchanged**: it remains the upstream-`master` build and is now
+  the same image as `dev` (`main` is a further alias). Nothing changes for
+  existing deployments; opt in to released code by switching to `stable` or a
+  version tag.
+- New build arg `NSUPDATE_SOURCE` (`git` | `pypi`, default `git`).
+- **All Python dependencies are now locked.** `requirements/pyproject.toml`
+  lists the direct requirements (the stable release pin, upstream master's
+  dependencies, and the extras `gunicorn`, `whitenoise`, `django-xff`);
+  `requirements/uv.lock` pins every package, direct and transitive, to an
+  exact version and sha256 hash. The build installs strictly from the lock
+  (`uv sync --locked`). Package updates no longer arrive silently with a
+  rebuild: Dependabot (`uv` ecosystem) opens a grouped weekly PR, a separate
+  PR for a new nsupdate release, and immediate PRs for security advisories.
+- Images carry the `org.opencontainers.image.version` label (`<version>` or
+  `dev-<sha>`). The Readme documents all tags and how to pin them by digest
+  with Renovate.
+- CI smoke-tests each variant (container must become healthy) before pushing,
+  and the weekly security scan covers both `stable` and `dev`.
+
+### Fixed
+
+- **CI was red since 2026-08-16, so no image had been published since
+  2026-08-09** (and GitHub then disabled the scheduled workflows for
+  inactivity). The cause was an upstream test (`test_ddns_client.py`) that
+  talks to the live public nsupdate.info service; it is now skipped, as in
+  upstream's own tox configuration.
+- Removed the nightly `cleanoldsessions` cron job. That command exists neither
+  in Django nor in nsupdate.info, so the job failed every night. Expired
+  sessions are already removed by the existing `clearsessions` job.
+
+### Security
+
+- **Application code is no longer writable by the runtime user.** `/app`, the
+  virtualenv and the static files are owned by root; only `/app/database` is
+  owned by uid `65532`. Previously the whole of `/app` was, and only
+  `read_only: true` in `compose.yaml` prevented modification.
+- **GitHub Actions are pinned to commit SHAs** instead of movable major tags.
+- **Disabled the nightly `testuser` cron job.** It (re)created an account
+  `test` with the password `test` every night -- intended for upstream's public
+  demo service, but a publicly known login on a private installation. If your
+  database already contains that account, delete the `test` user once via the
+  Django admin.
+
 ### Performance
 
 - **Lowered the default gunicorn worker count from 2 to 1** (dropping

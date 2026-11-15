@@ -1,10 +1,15 @@
 services:
   nsupdate:
+    # Image tags: "latest" / "dev" = upstream GitHub master;
+    # "stable" / "<version>" (e.g. 0.13.0) = latest nsupdate release from PyPI.
     image: ghcr.io/hensing/nsupdate-docker:latest
     build:
       context: .
       args:
         - BUILD_TARGET=prod
+        # git  = upstream master (what "latest"/"dev" are built from);
+        # pypi = released version (what "stable" is built from).
+        - NSUPDATE_SOURCE=git
     container_name: nsupdate
     restart: unless-stopped
     # The port is not published to the host, as it is expected to be accessed

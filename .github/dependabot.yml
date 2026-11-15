@@ -1,5 +1,7 @@
 version: 2
 updates:
+  # Actions are pinned to commit SHAs (with the version in a trailing comment);
+  # Dependabot updates both.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -9,6 +11,24 @@ updates:
       github-actions:
         patterns:
           - "*"
+
+  # requirements/pyproject.toml + uv.lock: every Python package in the image
+  # is locked to an exact version and hash, so all updates arrive as PRs.
+  # - A new nsupdate release gets its own PR (merging it publishes a new
+  #   "stable" image and version tag).
+  # - Everything else is grouped into one weekly PR.
+  # Security updates are raised immediately, independent of this schedule.
+  - package-ecosystem: "uv"
+    directory: "/requirements"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "nsupdate"
 
   - package-ecosystem: "docker"
     directory: "/"

@@ -4,16 +4,31 @@ on:
   push:
     branches:
       - main
+  # Pull requests (incl. Dependabot bumps) are tested, built, smoke-tested and
+  # scanned, but never logged in to the registry or pushed.
+  pull_request:
+    branches:
+      - main
   workflow_dispatch: # Allows manual triggering
   schedule:
     - cron: '0 4 * * 0' # rebuild every sunday night
+
+# Least privilege by default; jobs opt in to what they need.
+permissions:
+  contents: read
+
+# Never let two runs for the same ref push tags at the same time. Runs are
+# queued rather than cancelled so a push is never interrupted half-way.
+concurrency:
+  group: docker-publish-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   test:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Build Docker image for testing
         run: docker build --build-arg BUILD_TARGET=test -t nsupdate-test .
@@ -119,6 +134,10 @@ jobs:
         # are written for pytest. We also set the DJANGO_SETTINGS_MODULE
         # explicitly to ensure the correct settings are used for the test run.
         # --network host lets the container reach BIND on 127.0.0.1 (DoH/DoT tests).
+        # test_ddns_client.py is ignored because it talks to the live public
+        # nsupdate.info service with a shared test host; when that host is
+        # flagged for abuse the test fails for reasons unrelated to this image
+        # (upstream's own tox config deselects it too: -k "not ddns_client").
         # The image runs as the non-root user; set HOME to a writable path so
         # pytest's cache and any tooling have somewhere to write.
         run: >
@@ -127,11 +146,26 @@ jobs:
           -e HOME=/tmp
           -e DJANGO_SETTINGS_MODULE=nsupdate.settings.dev
           -e DJANGO_SUPERUSER_PASSWORD=ci-test-password
-          nsupdate-test pytest --ignore=src/nsupdate/api/_tests/test_api.py --ignore=src/nsupdate/main/_tests/test_dnstools.py
+          nsupdate-test pytest -p no:cacheprovider --ignore=src/nsupdate/api/_tests/test_api.py --ignore=src/nsupdate/main/_tests/test_dnstools.py --ignore=src/nsupdate/utils/_tests/test_ddns_client.py
 
+  # Two image variants are published:
+  #   stable -> the nsupdate release from PyPI pinned in requirements/pyproject.toml.
+  #             Tags: stable, <release version> (e.g. 0.13.0)
+  #   dev    -> upstream GitHub master, built from the exact commit resolved below.
+  #             Tags: dev, latest, main, dev-<upstream short sha> (e.g. dev-1a2b3c4)
+  # "latest" stays on the master build, as it always was, so existing
+  # deployments that pull "latest" keep getting the same thing.
   build-scan-push:
     needs: test
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: stable
+            source: pypi
+          - variant: dev
+            source: git
     permissions:
       contents: read
       packages: write
@@ -139,29 +173,64 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Log in to the Container registry
-        uses: docker/login-action@v4
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Resolve the upstream version
+        id: upstream
+        env:
+          SOURCE: ${{ matrix.source }}
+        run: |
+          if [ "$SOURCE" = "pypi" ]; then
+            # The release pinned in requirements/pyproject.toml (bumped by Dependabot).
+            VERSION=$(sed -n 's/^[[:space:]]*"nsupdate==\([0-9][0-9.]*\)",\{0,1\}[[:space:]]*$/\1/p' requirements/pyproject.toml)
+            if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+(\.[0-9]+)+$'; then
+              echo "::error::No single 'nsupdate==<version>' pin found in requirements/pyproject.toml"
+              exit 1
+            fi
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "label=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "Building nsupdate $VERSION from PyPI"
+          else
+            # Resolve master to a commit so the image and its dev-<sha> tag
+            # refer to exactly the same upstream revision.
+            SHA=$(git ls-remote https://github.com/nsupdate-info/nsupdate.info.git refs/heads/master | cut -f1)
+            if ! printf '%s' "$SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+              echo "::error::Could not resolve upstream master (got '$SHA')"
+              exit 1
+            fi
+            echo "ref=$SHA" >> "$GITHUB_OUTPUT"
+            echo "short=${SHA:0:7}" >> "$GITHUB_OUTPUT"
+            echo "label=dev-${SHA:0:7}" >> "$GITHUB_OUTPUT"
+            echo "Building nsupdate.info master at $SHA"
+          fi
+
       - name: Extract metadata (tags, labels) for Docker
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ghcr.io/${{ github.repository }}
+          flavor: |
+            latest=false
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=stable,enable=${{ matrix.variant == 'stable' }}
+            type=raw,value=latest,enable=${{ matrix.variant == 'dev' }}
+            type=raw,value=${{ steps.upstream.outputs.version }},enable=${{ matrix.variant == 'stable' }}
+            type=raw,value=dev,enable=${{ matrix.variant == 'dev' }}
+            type=raw,value=dev-${{ steps.upstream.outputs.short }},enable=${{ matrix.variant == 'dev' }}
+            type=ref,event=branch,enable=${{ matrix.variant == 'dev' }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.upstream.outputs.label }}
 
       - name: Build Docker image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           push: false
@@ -169,17 +238,47 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           pull: true
+          build-args: |
+            NSUPDATE_SOURCE=${{ matrix.source }}
+            NSUPDATE_REF=${{ steps.upstream.outputs.ref || 'master' }}
+
+      - name: Smoke test (container starts and answers HTTP)
+        # Runs with the same hardening as compose.yaml, so a change that needs
+        # a writable rootfs or a capability fails here instead of in production.
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}:${{ matrix.variant }}
+        run: |
+          docker run -d --name smoke \
+            --read-only --tmpfs /tmp \
+            --cap-drop ALL --security-opt no-new-privileges:true \
+            -e SECRET_KEY=ci-smoke-test-key \
+            -e DJANGO_SUPERUSER_PASSWORD=ci-test-password \
+            "$IMAGE"
+          STATUS=starting
+          for _ in $(seq 60); do
+            STATUS=$(docker inspect -f '{{.State.Health.Status}}' smoke 2>/dev/null || echo gone)
+            [ "$STATUS" = "starting" ] || break
+            sleep 3
+          done
+          docker logs smoke
+          docker exec smoke django-admin version || true
+          docker rm -f smoke
+          if [ "$STATUS" != "healthy" ]; then
+            echo "::error::Smoke test failed: container health is '$STATUS'"
+            exit 1
+          fi
 
       - name: Create SBOM
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
-          image: ghcr.io/${{ github.repository }}:latest
+          image: ghcr.io/${{ github.repository }}:${{ matrix.variant }}
           format: spdx-json
           output-file: "${{ github.event.repository.name }}-sbom.spdx.json"
+          artifact-name: "${{ github.event.repository.name }}-${{ matrix.variant }}-sbom.spdx.json"
 
       - name: Scan SBOM
         id: scan
-        uses: anchore/scan-action@v7
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
         continue-on-error: true
         with:
           sbom: "${{ github.event.repository.name }}-sbom.spdx.json"
@@ -196,16 +295,18 @@ jobs:
 
       - name: Upload SARIF as artifact
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: grype-results
+          name: grype-results-${{ matrix.variant }}
           path: grype-results.sarif
 
       - name: Upload vulnerability report to Security tab
-        if: steps.sarifcheck.outputs.found == 'true'
-        uses: github/codeql-action/upload-sarif@v4
+        # Not on pull requests: fork/Dependabot PRs get a read-only token.
+        if: steps.sarifcheck.outputs.found == 'true' && github.event_name != 'pull_request'
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           sarif_file: 'grype-results.sarif'
+          category: grype-${{ matrix.variant }}
 
       - name: Fail on critical vulnerabilities
         if: steps.sarifcheck.outputs.found == 'true'
@@ -225,4 +326,7 @@ jobs:
           fi
 
       - name: Push Docker image
+        # Only main publishes. A pull request or a manual run on another
+        # branch builds, tests and scans, but must never move the public tags.
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         run: docker push --all-tags ghcr.io/${{ github.repository }}

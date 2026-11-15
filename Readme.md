@@ -15,6 +15,7 @@ This Docker image is maintained by [Dr. Henning Dickten (@hensing)](https://gith
 
 - [Features](#features)
 - [Getting Started](#getting-started)
+- [Image Tags](#image-tags)
 - [Configuration](#configuration)
 - [Data Persistence](#data-persistence)
 - [Automated Maintenance](#automated-maintenance)
@@ -30,7 +31,8 @@ This Docker image is maintained by [Dr. Henning Dickten (@hensing)](https://gith
 -   **Near-zero CVEs**: Built on the [Wolfi](https://github.com/wolfi-dev) base image (Chainguard's container-native distro) with continuous CVE patching, instead of a Debian/Alpine base.
 -   **Fully rootless**: Every process — `gunicorn` *and* the scheduler — runs as the non-root user (UID/GID `65532`), with no root phase at all, not even at container startup.
 -   **Hardened by default**: `compose.yaml` ships with `cap_drop: ALL`, `no-new-privileges`, a read-only root filesystem, and resource limits.
--   **Reproducible builds**: Multi-stage build with [`uv`](https://github.com/astral-sh/uv); dependencies are pinned at the minor version (floating on bugfix releases); the upstream app is tracked via the `NSUPDATE_REF` build arg.
+-   **Stable and dev images**: `latest` is unchanged (upstream `master`, same as `dev`); `stable` is built from the latest nsupdate release on PyPI and is also tagged with that version (e.g. `0.13.0`); `dev` is built from upstream `master` and also tagged `dev-<sha>` — see [Image Tags](#image-tags).
+-   **Locked dependencies**: Multi-stage build with [`uv`](https://github.com/astral-sh/uv); every Python package is installed from a lock file with exact versions and sha256 hashes, and updated through Dependabot pull requests.
 -   **Production-ready**: Uses `gunicorn` as the WSGI server, with a container `HEALTHCHECK`.
 -   **Automated maintenance**: Uses [`supercronic`](https://github.com/aptible/supercronic) — a container-native, non-root cron — for periodic tasks.
 -   **Simple configuration**: Configure via a `.env` file and an optional `local_settings.py`.
@@ -88,6 +90,40 @@ docker compose up --build -d
 
 The service listens on port `8000` inside the `proxy` Docker network (not published to the host). Run it behind a reverse proxy such as Traefik, Caddy, or Nginx that terminates TLS and forwards to `nsupdate:8000`.
 
+## Image Tags
+
+The image is published to `ghcr.io/hensing/nsupdate-docker` in two variants, reachable through three kinds of tags:
+
+| Tag | What you get | Moves when | Use it when |
+| --- | --- | --- | --- |
+| `stable` | The newest [nsupdate release on PyPI](https://pypi.org/project/nsupdate/). | A new upstream release is adopted, and on every weekly rebuild. | You want released application code and are fine with moving to the next upstream release automatically. |
+| `<version>`, e.g. `0.13.0` | Exactly that PyPI release. While it is the newest release it is the same image as `stable`. | Only on the weekly rebuild (same application version, fresh base image and dependencies). It stops being rebuilt once a newer release is adopted. | You want to decide yourself when to move to a new upstream release — typically together with Renovate (see below). |
+| `dev` (aliases `latest`, `main`) and `dev-<sha>`, e.g. `dev-1c3578b` | Upstream GitHub [`master`](https://github.com/nsupdate-info/nsupdate.info). `dev-<sha>` names the exact upstream commit (first 7 characters). | `dev`/`latest` on every build; a `dev-<sha>` tag is only rebuilt while that commit is still the tip of master. | You need a fix that has not been released yet. Use `dev-<sha>` to stay on, or roll back to, one specific upstream commit. |
+
+Things to know:
+
+-   **`latest` is the same image as `dev`.** It has always been the upstream-master build and stays that way, so existing deployments keep working unchanged. Switch to `stable` or a `<version>` tag if you prefer released code.
+-   **Both variants are rebuilt every Sunday** (and on every push to this repository) on the current Wolfi base, so OS-level patches reach `stable` and `<version>` even when the application has not changed. Python packages are locked and change only when a Dependabot pull request is merged.
+-   **How `stable` moves to a new release:** the release is pinned in [`requirements/pyproject.toml`](requirements/pyproject.toml). When upstream publishes a new version on PyPI, Dependabot opens a pull request that bumps the pin; merging it publishes the new `stable` image and the new `<version>` tag.
+-   **`dev`/`latest` is ahead of `stable`.** Upstream releases are infrequent, so `dev` can be many commits ahead. It can also contain database migrations that the current release does not have yet — back up `./database` before switching from `dev`/`latest` to `stable`.
+-   Every image carries the OCI label `org.opencontainers.image.version` (`0.13.0` or `dev-<sha>`), so `docker inspect` tells you what is inside.
+
+The provided `compose.yaml` uses `latest`, and `docker compose up --build` builds the same variant locally (`NSUPDATE_SOURCE=git`). To run released code instead, change the image tag to `stable` (or a `<version>`) and the build arg to `NSUPDATE_SOURCE=pypi`.
+
+### Pinning and automatic updates (Renovate)
+
+All tags except a retired `<version>` are rebuilt regularly, so a tag alone does not identify one specific image. For reproducible deployments, pin the digest as well and let [Renovate](https://docs.renovatebot.com/docker/) keep it current:
+
+```yaml
+    image: ghcr.io/hensing/nsupdate-docker:0.13.0@sha256:<digest>
+```
+
+-   With a `<version>` tag, Renovate proposes two kinds of updates: a **digest update** after each weekly rebuild (same release, patched base image and any merged dependency updates) and a **version update** (`0.13.0` → `0.14.0`) when a new upstream release is published. The version tags are plain `major.minor.patch`, so Renovate's default Docker versioning sorts them correctly.
+-   With `stable`, `dev` or `latest`, Renovate can only propose digest updates — these tags carry no version to compare.
+-   `dev-<sha>` tags are not ordered, so Renovate cannot move from one to the next; use `dev` plus a digest if you want automatic updates of the dev variant.
+
+To add the digest to your compose file automatically, enable Renovate's `docker:pinDigests` preset. The current digest of a tag can be read with `docker buildx imagetools inspect ghcr.io/hensing/nsupdate-docker:0.13.0`.
+
 ## Configuration
 
 ### Environment Variables (`.env` file)
@@ -110,7 +146,8 @@ Set these under `build.args` in `compose.yaml` (or via `--build-arg` on the CLI)
 | Build Arg       | Description                                                                                  | Default  |
 | --------------- | ---------------------------------------------------------------------------------------------- | -------- |
 | `BUILD_TARGET`  | `prod` or `test` (installs dev/test dependencies too). See [Building for Development and Testing](#building-for-development-and-testing). | `prod`   |
-| `NSUPDATE_REF`  | The upstream `nsupdate.info` git ref (branch, tag, or commit SHA) to build. Defaults to `master`, since upstream's tagged releases are infrequent and lag behind master. Pin to a commit SHA for a fully reproducible build. | `master` |
+| `NSUPDATE_SOURCE` | `pypi` installs the released `nsupdate` package from PyPI (the `stable` image; the release is pinned in [`requirements/pyproject.toml`](requirements/pyproject.toml)); `git` clones upstream from GitHub (the `dev`/`latest` image). | `git` |
+| `NSUPDATE_REF`  | Only with `NSUPDATE_SOURCE=git`: the upstream git ref (branch, tag, or commit SHA) to build. Pin to a commit SHA for a fully reproducible build. | `master` |
 | `PYTHON_VERSION` | Python version to install from Wolfi.                                                          | `3.14`   |
 | `APP_UID` / `APP_GID` | UID/GID the container runs as. Match this with the ownership of your `database` bind mount. | `65532`  |
 
@@ -140,7 +177,9 @@ The container bind-mounts `./database` to `/app/database` to store the SQLite da
 
 ## Automated Maintenance
 
-The image runs [`supercronic`](https://github.com/aptible/supercronic) — a container-native cron that runs as the **non-root** user — to execute essential Django management commands (session cleanup, fault counters, nameserver checks, etc.). The jobs are defined in [`nsupdate-crontab`](nsupdate-crontab).
+The image runs [`supercronic`](https://github.com/aptible/supercronic) — a container-native cron that runs as the **non-root** user — to execute essential Django management commands (session cleanup, fault counters, nameserver checks, etc.). The jobs are defined in [`nsupdate-crontab`](nsupdate-crontab) and follow the "Regular jobs" list in the upstream admin documentation.
+
+> **The upstream `testuser` job is disabled on purpose.** Upstream runs `django-admin testuser` nightly for its public demo service: it (re)creates an account named `test` with the password `test`. On a private installation that would be a login with publicly known credentials, so the line is commented out in `nsupdate-crontab`. If an older image already created that account, delete the `test` user once via the Django admin. Only re-enable the job if you deliberately run a public demo account.
 
 ## Recommendations for Small Installations
 
@@ -156,9 +195,11 @@ This image is tuned for small, self-hosted setups (roughly 1–2 concurrent user
 
 -   **Wolfi base**: Near-zero CVEs, continuously patched; the final image contains only the necessary runtime dependencies.
 -   **Fully rootless**: All processes (`gunicorn` and `supercronic`) run as UID/GID `65532`. There is **no root startup phase** — migrations, superuser creation, and scheduling all run unprivileged. File ownership is baked in at build time, so no runtime `chown` is needed.
+-   **Read-only application code**: The application, its virtualenv and the static files are owned by root and not writable by the runtime user; only `/app/database` (and the `/tmp` tmpfs) is. A compromised app cannot modify its own code, even if the container is run without `read_only: true`.
 -   **Container hardening** (in `compose.yaml`): `cap_drop: ALL`, `security_opt: no-new-privileges`, a `read_only: true` root filesystem (with a `tmpfs` for `/tmp`), and `pids_limit`/`mem_limit`.
 -   **No injection surface**: The superuser is created via Django's native `createsuperuser --noinput` reading credentials from the environment, so special characters in the password cannot break out into shell/Python.
--   **Pinned, minor-tracked dependencies**: `gunicorn`, `whitenoise`, and `django-xff` are pinned at the minor version (e.g. `~=26.0.0`) — bugfix releases are picked up automatically, minor/major upgrades require a deliberate change.
+-   **Locked, hash-verified dependencies**: Every Python package — direct and transitive — is pinned to an exact version and sha256 hash in [`requirements/uv.lock`](requirements/uv.lock), and the build installs strictly from it (`uv sync --locked`). The direct requirements live in [`requirements/pyproject.toml`](requirements/pyproject.toml); `gunicorn`, `whitenoise`, and `django-xff` are constrained to their minor version there (e.g. `~=26.0.0`). Dependabot opens one grouped pull request per week for package updates, a separate one for a new nsupdate release, and immediate ones for security advisories.
+-   **Pinned CI actions**: All GitHub Actions are referenced by commit SHA rather than by a movable tag; Dependabot keeps them current.
 
 ### Binding Privileged Ports Without Root
 
@@ -175,7 +216,7 @@ This image is tuned for small, self-hosted setups (roughly 1–2 concurrent user
 This project is continuously monitored for security vulnerabilities using [Anchore grype](https://github.com/anchore/grype).
 
 -   **CI/CD Scans**: Every push to the `main` branch is automatically scanned. `High` and `Critical` findings are reported to the [Security tab](https://github.com/hensing/nsupdate-docker/security/code-scanning); the build fails only on `Critical`. (A transient `High` in the Wolfi base is typically picked up automatically by the weekly rebuild once an upstream patch lands.)
--   **Weekly Scans**: The `latest` Docker image is re-scanned weekly to catch newly disclosed vulnerabilities in existing dependencies, and automatically triggers a rebuild if any are found.
+-   **Weekly Scans**: The `stable` and `dev` (= `latest`) images are re-scanned weekly to catch newly disclosed vulnerabilities in existing dependencies, and automatically triggers a rebuild if any are found.
 
 ### Vulnerability Disclosure
 
@@ -183,7 +224,18 @@ If you discover a security vulnerability, please report it privately via [GitHub
 
 ## Building for Development and Testing
 
-To build an image that includes development dependencies (like `pytest`), set the `BUILD_TARGET` build argument to `test`.
+To build an image that includes development dependencies (like `pytest`), set the `BUILD_TARGET` build argument to `test`. The test build needs the upstream sources, so it only works with `NSUPDATE_SOURCE=git`. The development dependencies come from upstream's `requirements.d/dev.txt` and are not locked; the test image is never published.
+
+### Changing or updating dependencies
+
+Edit [`requirements/pyproject.toml`](requirements/pyproject.toml) and regenerate the lock file with the same `uv` the image is built with:
+
+```bash
+docker run --rm -v "$PWD/requirements:/w" -w /w cgr.dev/chainguard/wolfi-base \
+    sh -c 'apk add --no-cache uv python-3.14 && uv lock'
+```
+
+Use `uv lock --upgrade` to move every package to its newest allowed version. The image build fails if `uv.lock` does not match `pyproject.toml`. It also fails (`uv pip check`) if upstream `master` has gained a dependency that is missing from the `dev` group — add it there and re-lock.
 
 ### With Docker Compose
 
