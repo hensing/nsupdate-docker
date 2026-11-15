@@ -5,4 +5,5 @@
 !docker-entrypoint.sh
 !nsupdate-crontab
 !local_settings.py.default
-!requirements/
+!requirements/pyproject.toml
+!requirements/uv.lock

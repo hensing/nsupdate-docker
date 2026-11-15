@@ -42,8 +42,10 @@ Every process — gunicorn *and* the scheduler — runs as the non-root user
 `65532` (Chainguard's "nonroot" convention). There is **no root phase at all**,
 not even at container startup:
 
-- File ownership (`/app`, `/app/database`, `/app/static`) is baked in at
-  **build time**, so no runtime `chown` is needed.
+- File ownership is baked in at **build time**, so no runtime `chown` is
+  needed. Only `/app/database` belongs to `65532`; the application, the venv
+  and the static files are root-owned and read-only for the runtime user, so
+  the app cannot modify its own code even without `read_only: true`.
 - The old root `cron` daemon was replaced with
   [`supercronic`](https://github.com/aptible/supercronic), which runs the same
   job schedule (`nsupdate-crontab`) as the non-root user.
@@ -54,25 +56,41 @@ This is why `docker top` on this container shows no uid-0 processes, and why
 host-level "is this container running as root" scanners are satisfied without
 needing user-namespace remapping.
 
-### Dependency management: `uv`, minor-pinned extras
+### Dependency management: `uv`, fully locked with hashes
 
-Application dependencies are installed with [`uv`](https://github.com/astral-sh/uv)
-into a dedicated venv for fast, reproducible builds. The three extras this repo
-adds on top of upstream (`gunicorn`, `whitenoise`, `django-xff`) live in
-`requirements/extras.txt` and are pinned **at the minor version, floating on
-bugfix/patch**, e.g. `gunicorn~=26.0.0`. This means `26.0.1`, `26.0.2`, ... are
-picked up automatically (so patch-level security fixes land without a change),
-while `26.1.0` or `27.0.0` require a deliberate, reviewed pin bump.
+All Python dependencies are declared in `requirements/pyproject.toml` (a
+non-installable uv project, `package = false`) and locked in
+`requirements/uv.lock` with exact versions and sha256 hashes. The Dockerfile
+installs strictly from the lock with `uv sync --locked`, which also fails if
+the lock is stale. Nothing is resolved at build time.
 
-The pins live in `requirements/*.txt` rather than inline in the Dockerfile so
-that Dependabot (pip ecosystem, `versioning-strategy: increase-if-necessary`)
-can see them: it opens a PR only when a release falls outside the pin, i.e. a
-new minor/major of an extra or a new `nsupdate` release.
+- `[project].dependencies`: what this image adds in both variants
+  (`gunicorn`, `whitenoise`, `django-xff` constrained with `~=X.Y.0`, plus
+  `psycopg2` and `argon2-cffi`, which upstream lists only in `requirements.d/`).
+- group `stable`: `nsupdate==<release>`.
+- group `dev`: a copy of the `dependencies` list in upstream master's
+  `pyproject.toml`. The app is then installed from the checkout with
+  `--no-deps`, and `uv pip check` fails the build if upstream added a
+  dependency that is missing from this group.
+
+This replaced the earlier "minor-pinned, floating on patch" scheme (maintainer
+decision, 2026-11): the trade-off is that patch releases no longer arrive with
+a plain rebuild -- they arrive as Dependabot PRs (`uv` ecosystem; one grouped
+weekly PR, `nsupdate` separately, security advisories immediately), which CI
+tests before merge. Regenerate the lock inside a Wolfi container (command in
+the header of `requirements/pyproject.toml`), not with a host `uv`.
+
+Not covered by the lock: build-time backends (setuptools, setuptools-scm) that
+uv fetches to build sdists in the builder stage, and upstream's
+`requirements.d/dev.txt` in the unpublished test image.
 
 The Wolfi base image is intentionally **not** pinned to a digest, so
 Dependabot's `docker` entry has nothing to propose for it. Pinning would stop
 the weekly rebuild (and the rebuild triggered by the security scan) from
 picking up base-image fixes until someone merges a PR.
+
+GitHub Actions are pinned to commit SHAs with the version in a trailing
+comment; Dependabot updates both.
 
 ### Two image variants: `stable` (PyPI release) and `dev` (upstream master)
 
@@ -80,12 +98,10 @@ The `NSUPDATE_SOURCE` build arg selects where the application comes from, and
 CI publishes one image per value:
 
 - `pypi` → tags `stable` and the release version (e.g. `0.13.0`).
-  Installs the `nsupdate` release pinned in `requirements/stable.txt`; CI
-  reads the version tag from that same pin, so tag and content always match.
-  A new upstream release reaches `stable` by merging Dependabot's PR for that
-  file. `psycopg2` and `argon2-cffi` are listed there too because upstream
-  names them only in `requirements.d/`, not in the package metadata.
-  `/app/src` then contains only `local_settings.py`; the app lives in the
+  Installs the `nsupdate` release pinned in group `stable` of
+  `requirements/pyproject.toml`; CI reads the version tag from that same pin,
+  so tag and content always match. A new upstream release reaches `stable` by
+  merging Dependabot's PR for it. `/app/src` then contains only `local_settings.py`; the app lives in the
   venv's site-packages.
 - `git` → tags `dev`, `latest`, `main` and `dev-<upstream short sha>`. CI resolves
   upstream `master` to a commit and passes it as `NSUPDATE_REF` (the Dockerfile
@@ -102,8 +118,8 @@ master build, and the maintainer decided (2026-11) not to break existing
 deployments by repointing it -- moving from master to the release is a
 downgrade across a migration. `stable` is opt-in. nsupdate.info cuts releases
 rarely and they lag behind master (`0.13.0` was ~60 commits behind as of
-2026-11). Both variants are rebuilt weekly, so base-image and dependency
-patches land in `stable` too. `compose.yaml` keeps `latest` and builds `git`.
+2026-11). Both variants are rebuilt weekly, so base-image patches
+land in `stable` too. `compose.yaml` keeps `latest` and builds `git`.
 
 ### Cron jobs: upstream's list, minus `testuser`
 

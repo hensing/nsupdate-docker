@@ -13,10 +13,14 @@
   existing deployments; opt in to released code by switching to `stable` or a
   version tag.
 - New build arg `NSUPDATE_SOURCE` (`git` | `pypi`, default `git`).
-- The stable release is pinned in `requirements/stable.txt` and the extras
-  (`gunicorn`, `whitenoise`, `django-xff`) moved from the Dockerfile to
-  `requirements/extras.txt`. Dependabot now watches both files: it opens a PR
-  for a new nsupdate release and for new minor/major versions of the extras.
+- **All Python dependencies are now locked.** `requirements/pyproject.toml`
+  lists the direct requirements (the stable release pin, upstream master's
+  dependencies, and the extras `gunicorn`, `whitenoise`, `django-xff`);
+  `requirements/uv.lock` pins every package, direct and transitive, to an
+  exact version and sha256 hash. The build installs strictly from the lock
+  (`uv sync --locked`). Package updates no longer arrive silently with a
+  rebuild: Dependabot (`uv` ecosystem) opens a grouped weekly PR, a separate
+  PR for a new nsupdate release, and immediate PRs for security advisories.
 - Images carry the `org.opencontainers.image.version` label (`<version>` or
   `dev-<sha>`). The Readme documents all tags and how to pin them by digest
   with Renovate.
@@ -36,6 +40,11 @@
 
 ### Security
 
+- **Application code is no longer writable by the runtime user.** `/app`, the
+  virtualenv and the static files are owned by root; only `/app/database` is
+  owned by uid `65532`. Previously the whole of `/app` was, and only
+  `read_only: true` in `compose.yaml` prevented modification.
+- **GitHub Actions are pinned to commit SHAs** instead of movable major tags.
 - **Disabled the nightly `testuser` cron job.** It (re)created an account
   `test` with the password `test` every night -- intended for upstream's public
   demo service, but a publicly known login on a private installation. If your

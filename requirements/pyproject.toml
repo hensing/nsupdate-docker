@@ -1,0 +1,55 @@
+# Python dependencies of the nsupdate.info Docker image.
+#
+# This is not an installable package -- it only exists so that uv can resolve
+# everything into uv.lock (exact versions + sha256 hashes) and so that
+# Dependabot ("uv" ecosystem) can keep both files current. The image build
+# installs strictly from uv.lock (`uv sync --locked`).
+#
+# After editing this file, refresh the lock with:
+#   docker run --rm -v "$PWD/requirements:/w" -w /w cgr.dev/chainguard/wolfi-base \
+#       sh -c 'apk add --no-cache uv python-3.14 && uv lock'
+
+[project]
+name = "nsupdate-docker-requirements"
+version = "0"
+requires-python = ">=3.14,<3.15"
+
+# Installed in both image variants: what this image adds on top of upstream.
+# Pinned at the minor version ("~=X.Y.0" allows X.Y.1, X.Y.2, ... but not
+# X.(Y+1).0), so a new minor/major is a deliberate change of this file.
+dependencies = [
+    "gunicorn~=26.0.0",
+    "whitenoise~=6.12.0",
+    "django-xff~=1.5.0",
+    # Needed at runtime, but upstream lists these only in its requirements.d/
+    # files, not in the package metadata.
+    "psycopg2",
+    "argon2-cffi",
+]
+
+[dependency-groups]
+# "stable" image (NSUPDATE_SOURCE=pypi): the nsupdate.info release from PyPI.
+# The image is tagged with this version -- CI reads it from this line.
+stable = [
+    "nsupdate==0.13.0",
+]
+# "dev" image (NSUPDATE_SOURCE=git): the dependencies of upstream master, i.e.
+# the `dependencies` list of its pyproject.toml. The application itself is
+# installed from the git checkout with --no-deps; the build then runs
+# `uv pip check`, which fails if upstream has added a dependency that is
+# missing here.
+dev = [
+    "dnspython[doh]",
+    "netaddr",
+    "django>=5.2.0,<5.3.0",
+    "django-bootstrap5",
+    "django-referrer-policy",
+    "django-registration-redux",
+    "django-extensions",
+    "social-auth-app-django",
+    "requests",
+]
+
+[tool.uv]
+package = false
+default-groups = []
