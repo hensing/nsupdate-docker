@@ -8,11 +8,12 @@ PATH=/app/.venv/bin:/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 DJANGO_SETTINGS_MODULE=local_settings
 PYTHONPATH=/app/src
 
-# run cleanoldsessions command every day at 3:30 AM
-30 3 * * * cd /app && django-admin cleanoldsessions
-
-# reinitialize the test user:
-50 2 * * * cd /app && django-admin testuser
+# reinitialize the test user -- DISABLED on purpose.
+# Upstream runs this for its public demo service: it (re)creates an account
+# "test" with the password "test" every night. On a private installation that
+# is a login with publicly known credentials, so it stays commented out.
+# Only enable it if you really want a public demo account.
+#50 2 * * * cd /app && django-admin testuser
 
 # reset the fault counters:
 55 2 * * 6 cd /app && django-admin faults --flag-abuse=150 --reset-client --notify-user
