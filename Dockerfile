@@ -14,9 +14,10 @@ ARG BUILD_TARGET=prod
 ARG PYTHON_VERSION=3.14
 
 # Where the upstream application comes from:
-#   git  -> clone nsupdate.info from GitHub at NSUPDATE_REF   (image tag: dev)
+#   git  -> clone nsupdate.info from GitHub at NSUPDATE_REF   (image tags:
+#           dev, latest, dev-<sha>)
 #   pypi -> install the released "nsupdate" package from PyPI (image tags:
-#           stable, latest, <version>)
+#           stable, <version>)
 ARG NSUPDATE_SOURCE=git
 
 # NSUPDATE_SOURCE=git: the upstream git ref to build. Defaults to "master":
