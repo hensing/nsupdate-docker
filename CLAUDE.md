@@ -58,21 +58,59 @@ needing user-namespace remapping.
 
 Application dependencies are installed with [`uv`](https://github.com/astral-sh/uv)
 into a dedicated venv for fast, reproducible builds. The three extras this repo
-adds on top of upstream's `requirements.d/prod.txt` (`gunicorn`, `whitenoise`,
-`django-xff`) are pinned **at the minor version, floating on bugfix/patch**,
-e.g. `gunicorn~=26.0.0`. This means `26.0.1`, `26.0.2`, ... are picked up
-automatically (so patch-level security fixes land without a Dockerfile change),
+adds on top of upstream (`gunicorn`, `whitenoise`, `django-xff`) live in
+`requirements/extras.txt` and are pinned **at the minor version, floating on
+bugfix/patch**, e.g. `gunicorn~=26.0.0`. This means `26.0.1`, `26.0.2`, ... are
+picked up automatically (so patch-level security fixes land without a change),
 while `26.1.0` or `27.0.0` require a deliberate, reviewed pin bump.
 
-### Upstream nsupdate.info ref: tracks `master`, not a release tag
+The pins live in `requirements/*.txt` rather than inline in the Dockerfile so
+that Dependabot (pip ecosystem, `versioning-strategy: increase-if-necessary`)
+can see them: it opens a PR only when a release falls outside the pin, i.e. a
+new minor/major of an extra or a new `nsupdate` release.
 
-The `NSUPDATE_REF` build arg defaults to `master`, **not** a tagged release.
-This is deliberate: nsupdate.info cuts tagged releases rarely and they lag
-significantly behind master (as of writing, the latest tag `0.13.0` was ~60
-commits and several real bugfixes behind `master`). Tracking master is the
-better security/correctness trade-off for this particular upstream. Override
-`NSUPDATE_REF` with a specific commit SHA if you need a fully pinned,
-reproducible build instead.
+The Wolfi base image is intentionally **not** pinned to a digest, so
+Dependabot's `docker` entry has nothing to propose for it. Pinning would stop
+the weekly rebuild (and the rebuild triggered by the security scan) from
+picking up base-image fixes until someone merges a PR.
+
+### Two image variants: `stable` (PyPI release) and `dev` (upstream master)
+
+The `NSUPDATE_SOURCE` build arg selects where the application comes from, and
+CI publishes one image per value:
+
+- `pypi` → tags `stable`, `latest` and the release version (e.g. `0.13.0`).
+  Installs the `nsupdate` release pinned in `requirements/stable.txt`; CI
+  reads the version tag from that same pin, so tag and content always match.
+  A new upstream release reaches `stable` by merging Dependabot's PR for that
+  file. `psycopg2` and `argon2-cffi` are listed there too because upstream
+  names them only in `requirements.d/`, not in the package metadata.
+  `/app/src` then contains only `local_settings.py`; the app lives in the
+  venv's site-packages.
+- `git` → tags `dev`, `main` and `dev-<upstream short sha>`. CI resolves
+  upstream `master` to a commit and passes it as `NSUPDATE_REF` (the Dockerfile
+  default is `master`). This is the Dockerfile default source and the only
+  variant that supports `BUILD_TARGET=test` (the upstream test suite needs the
+  source tree).
+
+Version tags are plain `major.minor.patch` so that Renovate users can track
+them; all tags are rebuilt weekly, so consumers who want immutability pin the
+digest (documented in the Readme's "Image Tags" section).
+
+`latest` deliberately points at `stable`: the maintainer asked for more stable
+builds (2026-11). The trade-off is known: nsupdate.info cuts releases rarely
+and they lag behind master (`0.13.0` was ~60 commits behind as of 2026-11), so
+a fix that only exists on master needs the `dev` image. Both variants are
+rebuilt weekly, so base-image and dependency patches land in `stable` too.
+
+### Cron jobs: upstream's list, minus `testuser`
+
+`nsupdate-crontab` mirrors the "Regular jobs" section of upstream's
+`docs/admin.rst`. The `testuser` job is commented out on purpose: it recreates
+an account `test` / password `test` nightly (meant for upstream's public demo).
+Do not re-enable it. Upstream's `--stale-check` commands (hosts/users/domains)
+delete data and are not in upstream's recommended crontab either; `illegal` is
+interactive and cannot run from cron.
 
 ### Scheduler: supercronic, not cron
 

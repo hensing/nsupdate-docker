@@ -1,0 +1,10 @@
+# The nsupdate.info release that the "stable" image is built from
+# (NSUPDATE_SOURCE=pypi). The image is tagged with this version, so this pin
+# is the single source of truth. Dependabot opens a PR when upstream publishes
+# a new release on PyPI; merging it publishes the new stable image.
+nsupdate==0.13.0
+
+# Needed at runtime, but upstream lists these only in its requirements.d/
+# files, not in the package metadata.
+psycopg2
+argon2-cffi

@@ -2,6 +2,41 @@
 
 ## Unreleased
 
+### Images
+
+- **Two image variants are now published.** `stable` is built from the latest
+  nsupdate release on PyPI and is also tagged with that release version (e.g.
+  `0.13.0`); `dev` is built from upstream GitHub `master`, as the only image
+  was before, and is also tagged `dev-<upstream short sha>`.
+- **`latest` now points to the `stable` (PyPI release) image** instead of the
+  `master` build. To keep following upstream `master`, switch your image tag to
+  `dev` (`main` remains an alias for it).
+- New build arg `NSUPDATE_SOURCE` (`git` | `pypi`). `compose.yaml` now
+  references the `stable` tag and builds with `NSUPDATE_SOURCE=pypi`.
+- The stable release is pinned in `requirements/stable.txt` and the extras
+  (`gunicorn`, `whitenoise`, `django-xff`) moved from the Dockerfile to
+  `requirements/extras.txt`. Dependabot now watches both files: it opens a PR
+  for a new nsupdate release and for new minor/major versions of the extras.
+- Images carry the `org.opencontainers.image.version` label (`<version>` or
+  `dev-<sha>`). The Readme documents all tags and how to pin them by digest
+  with Renovate.
+- CI smoke-tests each variant (container must become healthy) before pushing,
+  and the weekly security scan covers both `stable` and `dev`.
+
+### Fixed
+
+- Removed the nightly `cleanoldsessions` cron job. That command exists neither
+  in Django nor in nsupdate.info, so the job failed every night. Expired
+  sessions are already removed by the existing `clearsessions` job.
+
+### Security
+
+- **Disabled the nightly `testuser` cron job.** It (re)created an account
+  `test` with the password `test` every night -- intended for upstream's public
+  demo service, but a publicly known login on a private installation. If your
+  database already contains that account, delete the `test` user once via the
+  Django admin.
+
 ### Performance
 
 - **Lowered the default gunicorn worker count from 2 to 1** (dropping

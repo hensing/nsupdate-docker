@@ -8,6 +8,11 @@ on:
 jobs:
   scan:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # stable = PyPI release (also tagged latest), dev = upstream master.
+        tag: [stable, dev]
     permissions:
       contents: read # for actions/checkout
       packages: read # for docker/login-action
@@ -28,9 +33,10 @@ jobs:
       - name: Create SBOM
         uses: anchore/sbom-action@v0
         with:
-          image: ghcr.io/${{ github.repository }}:latest
+          image: ghcr.io/${{ github.repository }}:${{ matrix.tag }}
           format: spdx-json
           output-file: "${{ github.event.repository.name }}-sbom.spdx.json"
+          artifact-name: "${{ github.event.repository.name }}-${{ matrix.tag }}-sbom.spdx.json"
 
       - name: Scan SBOM
         id: scan
@@ -49,6 +55,7 @@ jobs:
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: 'grype-results.sarif'
+          category: grype-${{ matrix.tag }}
 
       - name: Check for critical vulnerabilities
         id: vulncheck

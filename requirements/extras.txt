@@ -1,0 +1,7 @@
+# Packages this image adds on top of upstream (installed in both variants).
+# Pinned at the minor version, floating on bugfix releases: "~=X.Y.0" allows
+# X.Y.1, X.Y.2, ... but not X.(Y+1).0. Patch-level fixes land with every
+# rebuild; Dependabot opens a PR when a new minor/major release is out.
+gunicorn~=26.0.0
+whitenoise~=6.12.0
+django-xff~=1.5.0

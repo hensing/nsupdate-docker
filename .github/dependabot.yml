@@ -10,6 +10,18 @@ updates:
         patterns:
           - "*"
 
+  # requirements/stable.txt pins the nsupdate release the "stable" image is
+  # built from; requirements/extras.txt holds the minor-pinned extras.
+  # increase-if-necessary: only open a PR when a new release falls outside the
+  # current pin (a new nsupdate release, or a new minor/major of an extra) --
+  # bugfix releases inside "~=X.Y.0" are picked up by the weekly rebuild anyway.
+  - package-ecosystem: "pip"
+    directory: "/requirements"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+    versioning-strategy: "increase-if-necessary"
+
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
