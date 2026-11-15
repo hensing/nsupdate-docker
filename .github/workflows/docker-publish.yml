@@ -134,6 +134,10 @@ jobs:
         # are written for pytest. We also set the DJANGO_SETTINGS_MODULE
         # explicitly to ensure the correct settings are used for the test run.
         # --network host lets the container reach BIND on 127.0.0.1 (DoH/DoT tests).
+        # test_ddns_client.py is ignored because it talks to the live public
+        # nsupdate.info service with a shared test host; when that host is
+        # flagged for abuse the test fails for reasons unrelated to this image
+        # (upstream's own tox config deselects it too: -k "not ddns_client").
         # The image runs as the non-root user; set HOME to a writable path so
         # pytest's cache and any tooling have somewhere to write.
         run: >
@@ -142,7 +146,7 @@ jobs:
           -e HOME=/tmp
           -e DJANGO_SETTINGS_MODULE=nsupdate.settings.dev
           -e DJANGO_SUPERUSER_PASSWORD=ci-test-password
-          nsupdate-test pytest --ignore=src/nsupdate/api/_tests/test_api.py --ignore=src/nsupdate/main/_tests/test_dnstools.py
+          nsupdate-test pytest --ignore=src/nsupdate/api/_tests/test_api.py --ignore=src/nsupdate/main/_tests/test_dnstools.py --ignore=src/nsupdate/utils/_tests/test_ddns_client.py
 
   # Two image variants are published:
   #   stable -> the nsupdate release from PyPI pinned in requirements/stable.txt.

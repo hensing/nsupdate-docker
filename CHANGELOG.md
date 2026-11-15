@@ -25,6 +25,11 @@
 
 ### Fixed
 
+- **CI was red since 2026-08-16, so no image had been published since
+  2026-08-09** (and GitHub then disabled the scheduled workflows for
+  inactivity). The cause was an upstream test (`test_ddns_client.py`) that
+  talks to the live public nsupdate.info service; it is now skipped, as in
+  upstream's own tox configuration.
 - Removed the nightly `cleanoldsessions` cron job. That command exists neither
   in Django nor in nsupdate.info, so the job failed every night. Expired
   sessions are already removed by the existing `clearsessions` job.
