@@ -18,7 +18,7 @@ requires-python = ">=3.14,<3.15"
 # Pinned at the minor version ("~=X.Y.0" allows X.Y.1, X.Y.2, ... but not
 # X.(Y+1).0), so a new minor/major is a deliberate change of this file.
 dependencies = [
-    "gunicorn~=26.0.0",
+    "gunicorn~=27.0.1",
     "whitenoise~=6.12.0",
     "django-xff~=1.5.0",
     # Needed at runtime, but upstream lists these only in its requirements.d/
