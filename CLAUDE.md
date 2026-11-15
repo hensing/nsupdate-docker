@@ -79,7 +79,7 @@ picking up base-image fixes until someone merges a PR.
 The `NSUPDATE_SOURCE` build arg selects where the application comes from, and
 CI publishes one image per value:
 
-- `pypi` → tags `stable`, `latest` and the release version (e.g. `0.13.0`).
+- `pypi` → tags `stable` and the release version (e.g. `0.13.0`).
   Installs the `nsupdate` release pinned in `requirements/stable.txt`; CI
   reads the version tag from that same pin, so tag and content always match.
   A new upstream release reaches `stable` by merging Dependabot's PR for that
@@ -87,7 +87,7 @@ CI publishes one image per value:
   names them only in `requirements.d/`, not in the package metadata.
   `/app/src` then contains only `local_settings.py`; the app lives in the
   venv's site-packages.
-- `git` → tags `dev`, `main` and `dev-<upstream short sha>`. CI resolves
+- `git` → tags `dev`, `latest`, `main` and `dev-<upstream short sha>`. CI resolves
   upstream `master` to a commit and passes it as `NSUPDATE_REF` (the Dockerfile
   default is `master`). This is the Dockerfile default source and the only
   variant that supports `BUILD_TARGET=test` (the upstream test suite needs the
@@ -97,11 +97,13 @@ Version tags are plain `major.minor.patch` so that Renovate users can track
 them; all tags are rebuilt weekly, so consumers who want immutability pin the
 digest (documented in the Readme's "Image Tags" section).
 
-`latest` deliberately points at `stable`: the maintainer asked for more stable
-builds (2026-11). The trade-off is known: nsupdate.info cuts releases rarely
-and they lag behind master (`0.13.0` was ~60 commits behind as of 2026-11), so
-a fix that only exists on master needs the `dev` image. Both variants are
-rebuilt weekly, so base-image and dependency patches land in `stable` too.
+`latest` deliberately stays on the `dev` (master) build: it always was the
+master build, and the maintainer decided (2026-11) not to break existing
+deployments by repointing it -- moving from master to the release is a
+downgrade across a migration. `stable` is opt-in. nsupdate.info cuts releases
+rarely and they lag behind master (`0.13.0` was ~60 commits behind as of
+2026-11). Both variants are rebuilt weekly, so base-image and dependency
+patches land in `stable` too. `compose.yaml` keeps `latest` and builds `git`.
 
 ### Cron jobs: upstream's list, minus `testuser`
 

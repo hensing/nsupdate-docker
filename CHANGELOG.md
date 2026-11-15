@@ -8,11 +8,11 @@
   nsupdate release on PyPI and is also tagged with that release version (e.g.
   `0.13.0`); `dev` is built from upstream GitHub `master`, as the only image
   was before, and is also tagged `dev-<upstream short sha>`.
-- **`latest` now points to the `stable` (PyPI release) image** instead of the
-  `master` build. To keep following upstream `master`, switch your image tag to
-  `dev` (`main` remains an alias for it).
-- New build arg `NSUPDATE_SOURCE` (`git` | `pypi`). `compose.yaml` now
-  references the `stable` tag and builds with `NSUPDATE_SOURCE=pypi`.
+- **`latest` is unchanged**: it remains the upstream-`master` build and is now
+  the same image as `dev` (`main` is a further alias). Nothing changes for
+  existing deployments; opt in to released code by switching to `stable` or a
+  version tag.
+- New build arg `NSUPDATE_SOURCE` (`git` | `pypi`, default `git`).
 - The stable release is pinned in `requirements/stable.txt` and the extras
   (`gunicorn`, `whitenoise`, `django-xff`) moved from the Dockerfile to
   `requirements/extras.txt`. Dependabot now watches both files: it opens a PR
