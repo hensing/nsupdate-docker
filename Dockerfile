@@ -112,6 +112,12 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         django-admin collectstatic --noinput \
     && rm -rf /app/.git /app/nsupdate.sqlite /app/.venv/.lock
 
+# social-auth-app-django >= 6.0 only starts a login on POST; nsupdate's
+# templates still use GET (-> 405). Rewrite them into CSRF-protected POST
+# forms. Fails the build if the templates no longer match (see the script).
+COPY patches/social_begin_post.py /patches/social_begin_post.py
+RUN python /patches/social_begin_post.py
+
 # --- Runtime Stage ---------------------------------------------------------
 # Minimal Wolfi runtime: python + bash (entrypoint) + supercronic + libpq.
 FROM cgr.dev/chainguard/wolfi-base

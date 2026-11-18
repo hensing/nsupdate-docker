@@ -29,6 +29,12 @@
 
 ### Fixed
 
+- **Social login (GitHub, Google, ...) answered `405 Method Not Allowed`.**
+  social-auth-app-django 6.0+ only starts a login on a CSRF-protected POST,
+  but nsupdate's login page and account settings page (release and master)
+  still send a GET. The build now rewrites both templates into POST forms
+  (`patches/social_begin_post.py`); it fails if upstream changes those
+  templates, so the patch is revisited once upstream fixes this itself.
 - **CI was red since 2026-08-16, so no image had been published since
   2026-08-09** (and GitHub then disabled the scheduled workflows for
   inactivity). The cause was an upstream test (`test_ddns_client.py`) that

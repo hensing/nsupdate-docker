@@ -7,3 +7,4 @@
 !local_settings.py.default
 !requirements/pyproject.toml
 !requirements/uv.lock
+!patches/social_begin_post.py
